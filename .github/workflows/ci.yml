@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-22.04
+
+    services:
+      postgres-shard-1:
+        image: postgres:${{ matrix.pg-version }}
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: testdb
+        ports:
+          - 5551:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+
+      postgres-shard-2:
+        image: postgres:${{ matrix.pg-version }}
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: testdb
+        ports:
+          - 5552:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+
+      postgres-shard-3:
+        image: postgres:${{ matrix.pg-version }}
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: testdb
+        ports:
+          - 5553:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+
+    strategy:
+      matrix:
+        go-version: [ "1.24" ]
+        pg-version: [ 16, 17 ]
+    steps:
+      - name: Get code from repository
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+      - name: Apply migrations
+        env:
+          SHARD_1_DSN: postgresql://postgres:postgres@localhost:5551/testdb
+          SHARD_2_DSN: postgresql://postgres:postgres@localhost:5552/testdb
+          SHARD_3_DSN: postgresql://postgres:postgres@localhost:5553/testdb
+        run: |
+          go install github.com/pressly/goose/v3/cmd/goose@latest
+          goose -dir migrations/init_buckets/1 postgres "${SHARD_1_DSN}" up
+          goose -dir migrations/init_buckets/2 postgres "${SHARD_2_DSN}" up
+          goose -dir migrations/init_buckets/3 postgres "${SHARD_3_DSN}" up
+          goose -dir migrations/example postgres "${SHARD_1_DSN}?search_path=bucket_1" up
+          goose -dir migrations/example postgres "${SHARD_1_DSN}?search_path=bucket_2" up
+          goose -dir migrations/example postgres "${SHARD_2_DSN}?search_path=bucket_3" up
+          goose -dir migrations/example postgres "${SHARD_2_DSN}?search_path=bucket_4" up
+          goose -dir migrations/example postgres "${SHARD_3_DSN}?search_path=bucket_5" up
+          goose -dir migrations/example postgres "${SHARD_3_DSN}?search_path=bucket_6" up
+      - name: Test
+        run: go test -parallel=1 -race ./...
+        env:
+          SHARD_1_DSN: postgresql://postgres:postgres@localhost:5551/testdb
+          SHARD_2_DSN: postgresql://postgres:postgres@localhost:5552/testdb
+          SHARD_3_DSN: postgresql://postgres:postgres@localhost:5553/testdb
+
+  linter:
+    name: Linter
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Get code from repository
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.23
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.63.4
+          args: --config=.golangci.pipeline.yaml --sort-results --max-issues-per-linter=1000 --max-same-issues=1000 ./...
