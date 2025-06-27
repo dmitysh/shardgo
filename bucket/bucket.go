@@ -10,5 +10,5 @@ type Range struct {
 }
 
 func (s Bucket) String() string {
-	return strconv.Itoa(int(s))
+	return strconv.Itoa(int(s)) //nolint: gosec
 }

@@ -3,12 +3,12 @@ package shardgo
 import (
 	"context"
 	"fmt"
-	"github.com/dmitysh/shardgo/bucket"
-	"golang.org/x/sync/errgroup"
 	"slices"
 
+	"github.com/dmitysh/shardgo/bucket"
 	"github.com/dmitysh/shardgo/shard"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/sync/errgroup"
 )
 
 type ShardCluster struct {
@@ -47,7 +47,7 @@ func NewShardCluster(ctx context.Context, keyToBucket shard.KeyToBucketFunc, sha
 		shards:        shards,
 	}
 
-	err := sc.ForEachShard(ctx, func(ctx context.Context, sh shard.Shard) error {
+	err := sc.ForAllShards(ctx, func(ctx context.Context, sh shard.Shard) error {
 		return sh.Pool.Ping(ctx)
 	})
 	if err != nil {
@@ -60,7 +60,7 @@ func NewShardCluster(ctx context.Context, keyToBucket shard.KeyToBucketFunc, sha
 func getBucketsFromList(buckets []bucket.Range) []bucket.Bucket {
 	flattenedBuckets := make([]bucket.Bucket, 0)
 	for _, b := range buckets {
-		for bucketID := b.From; bucketID < b.To; bucketID++ {
+		for bucketID := b.From; bucketID <= b.To; bucketID++ {
 			flattenedBuckets = append(flattenedBuckets, bucketID)
 		}
 	}
@@ -69,7 +69,7 @@ func getBucketsFromList(buckets []bucket.Range) []bucket.Bucket {
 
 type ForEachShardCallback func(ctx context.Context, sh shard.Shard) error
 
-func (s *ShardCluster) ForEachShard(ctx context.Context, callback ForEachShardCallback) error {
+func (s *ShardCluster) ForAllShards(ctx context.Context, callback ForEachShardCallback) error {
 	eg, ctx := errgroup.WithContext(ctx)
 
 	for _, sh := range s.shards {
@@ -87,7 +87,7 @@ func (s *ShardCluster) ForEachShard(ctx context.Context, callback ForEachShardCa
 
 type ForEachBucketCallback func(ctx context.Context, bucketPool *bucket.Pool) error
 
-func (s *ShardCluster) ForEachBucket(ctx context.Context, callback ForEachBucketCallback) error {
+func (s *ShardCluster) ForAllBuckets(ctx context.Context, callback ForEachBucketCallback) error {
 	eg, ctx := errgroup.WithContext(ctx)
 
 	for buck, sh := range s.bucketToShard {
