@@ -11,12 +11,14 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+// ShardCluster sharded PostgreSQL cluster
 type ShardCluster struct {
 	keyToBucket   shard.KeyToBucketFunc
 	bucketToShard map[bucket.Bucket]shard.Shard
 	shards        []shard.Shard
 }
 
+// NewShardCluster creates and pings all connections to db cluster
 func NewShardCluster(ctx context.Context, keyToBucket shard.KeyToBucketFunc, shardList []shard.BucketToShard) (*ShardCluster, error) {
 	bucketToShard := make(map[bucket.Bucket]shard.Shard)
 
@@ -67,8 +69,10 @@ func getBucketsFromList(buckets []bucket.Range) []bucket.Bucket {
 	return flattenedBuckets
 }
 
+// ForEachShardCallback callback for ForAllShards
 type ForEachShardCallback func(ctx context.Context, sh shard.Shard) error
 
+// ForAllShards executes ForEachShardCallback on each shard via errorgroup
 func (s *ShardCluster) ForAllShards(ctx context.Context, callback ForEachShardCallback) error {
 	eg, ctx := errgroup.WithContext(ctx)
 
@@ -85,8 +89,10 @@ func (s *ShardCluster) ForAllShards(ctx context.Context, callback ForEachShardCa
 	return nil
 }
 
+// ForEachBucketCallback callback for ForAllBuckets
 type ForEachBucketCallback func(ctx context.Context, bucketPool *bucket.Pool) error
 
+// ForAllBuckets executes ForEachBucketCallback on each bucket via errorgroup
 func (s *ShardCluster) ForAllBuckets(ctx context.Context, callback ForEachBucketCallback) error {
 	eg, ctx := errgroup.WithContext(ctx)
 
@@ -103,10 +109,12 @@ func (s *ShardCluster) ForAllBuckets(ctx context.Context, callback ForEachBucket
 	return nil
 }
 
+// GetBucket returns bucket.Bucket for key
 func (s *ShardCluster) GetBucket(key string) bucket.Bucket {
 	return s.keyToBucket(key)
 }
 
+// PickPool returns bucket.Pool for key
 func (s *ShardCluster) PickPool(key string) (*bucket.Pool, error) {
 	buck := s.keyToBucket(key)
 	sh, ok := s.bucketToShard[buck]
@@ -117,6 +125,7 @@ func (s *ShardCluster) PickPool(key string) (*bucket.Pool, error) {
 	return bucket.NewPool(buck, sh.Pool), nil
 }
 
+// PickPoolByBucket returns bucket.Pool for bucket
 func (s *ShardCluster) PickPoolByBucket(buck bucket.Bucket) (*bucket.Pool, error) {
 	sh, ok := s.bucketToShard[buck]
 	if !ok {
@@ -126,12 +135,14 @@ func (s *ShardCluster) PickPoolByBucket(buck bucket.Bucket) (*bucket.Pool, error
 	return bucket.NewPool(buck, sh.Pool), nil
 }
 
+// GetShards returns copy of list of shards
 func (s *ShardCluster) GetShards() []shard.Shard {
 	cp := make([]shard.Shard, len(s.shards))
 	copy(cp, s.shards)
 	return cp
 }
 
+// Close closes all cluster connections
 func (s *ShardCluster) Close() {
 	for _, sh := range s.shards {
 		sh.Pool.Close()
